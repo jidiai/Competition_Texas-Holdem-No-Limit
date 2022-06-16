@@ -30,9 +30,11 @@ class ChessAndCard(Game, DictObservation):
         if self.env_core is None:
             raise Exception("ChessAndCard env_core is None!")
 
+        self.episode_count = 30 if self.game_name in ['texas_holdem_no_limit_v3', 'texas_holdem_v3'] else 1
         self.won = {}
         self.n_return = [0] * self.n_player
         self.step_cnt = 0
+        self.step_cnt_episode = 0
         self.done = False
         self.seed = seed
         self.env_core.seed(self.seed)
@@ -53,6 +55,7 @@ class ChessAndCard(Game, DictObservation):
 
     def reset(self):
         self.step_cnt = 0
+        self.step_cnt_episode = 0
         self.done = False
         self.env_core.reset()
         obs, _, _, _ = self.env_core.last()
@@ -63,18 +66,34 @@ class ChessAndCard(Game, DictObservation):
         self.n_return = [0] * self.n_player
         return self.all_observes
 
+    def reset_per_episode(self):
+        self.step_cnt_episode = 0
+        self.done = False
+        self.env_core.reset()
+        obs, _, _, _ = self.env_core.last()
+        self.current_state = obs
+        self.all_observes = self.get_all_observes()
+        self.init_info = self.get_info_after()
+        return self.all_observes
+
     def step(self, joint_action):
+        self.step_cnt_episode += 1
         self.is_valid_action(joint_action)
         info_before = self.step_before_info()
         joint_action_decode = self.decode(joint_action)
         self.env_core.step(joint_action_decode)
-        obs, reward, _, info_after = self.env_core.last()
+        obs, reward, episode_done, info_after = self.env_core.last()
         info_after = self.get_info_after()
         self.current_state = obs
         self.all_observes = self.get_all_observes()
         # print("debug all observes ", type(self.all_observes[0]["obs"]))
         self.set_n_return()
         self.step_cnt += 1
+        if episode_done:
+            self.episode_count -= 1
+            if self.episode_count > 0:
+                self.all_observes = self.reset_per_episode()
+                info_after = self.init_info
         done = self.is_terminal()
         return self.all_observes, reward, done, info_before, info_after
 
@@ -105,10 +124,13 @@ class ChessAndCard(Game, DictObservation):
         if self.step_cnt >= self.max_step:
             self.done = True
 
-        if not self.env_core.agents:
-            self.done = True
+        # if not self.env_core.agents:
+        #     self.done = True
+        #
+        # if all(self.env_core.dones.values()):
+        #     self.done = True
 
-        if all(self.env_core.dones.values()):
+        if self.episode_count == 0:
             self.done = True
 
         return self.done
@@ -177,10 +199,12 @@ class ChessAndCard(Game, DictObservation):
 
     def get_all_observes(self):
         all_observes = []
+        is_new_episode = 1 if self.step_cnt_episode == 0 else 0
         for i in range(self.n_player):
             player_name = self.player_id_reverse_map[i]
             each_obs = copy.deepcopy(self.current_state)
-            each = {"obs": each_obs, "current_move_player": self.env_core.agent_selection,
+            each = {"obs": each_obs, "is_new_episode": is_new_episode,
+                    "current_move_player": self.env_core.agent_selection,
                     "controlled_player_index": i, "controlled_player_name": player_name}
             all_observes.append(each)
         return all_observes
