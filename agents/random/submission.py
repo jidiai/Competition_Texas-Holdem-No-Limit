@@ -29,7 +29,11 @@ def sample_single_dim(observation, action_space_list_each, is_act_continuous):
     else:
         if action_space_list_each.__class__.__name__ == "Discrete":
             each = [0] * action_space_list_each.n
-            legal_actions = np.where(observation['obs']['action_mask'] == 1)[0].tolist()
+            if observation['obs'] is not None:
+                legal_actions = np.where(observation['obs']['action_mask'] == 1)[0].tolist()
+                print(legal_actions)
+            else:
+                legal_actions = [i for i in range(action_space_list_each.n)]
             idx = random.choice(legal_actions)
             each[idx] = 1
         elif action_space_list_each.__class__.__name__ == "MultiDiscreteParticle":
